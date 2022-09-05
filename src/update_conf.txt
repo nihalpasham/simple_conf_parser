@@ -1,0 +1,9 @@
+[active]
+image_name=xx.itb
+image_version=xxx
+
+[passive]
+ready_for_update_flag=true
+image_name=xx.itb
+image_version=xxx
+update_status=updating
