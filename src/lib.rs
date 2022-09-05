@@ -379,5 +379,37 @@ mod tests {
                 )
             ))
         );
+        assert_eq!(
+            parse_config(
+                "[active]
+                image_name=xx.itb
+                image_version=ver_34488734
+                
+                [passive]
+                ready_for_update_flag=false
+                image_name=
+                image_version=ver_34488735
+                update_status=updating"
+            ),
+            Ok((
+                "image_name=
+                image_version=ver_34488735
+                update_status=updating",
+                (
+                    ActiveConf {
+                        active_config: ConfigKeys::Active,
+                        image_name: ("xx", ".itb"),
+                        image_version: 34488734
+                    },
+                    PassiveConf {
+                        passive_config: ConfigKeys::Passive,
+                        ready_for_update_flag: false,
+                        image_name: None,
+                        image_version: None,
+                        update_status: None
+                    }
+                )
+            ))
+        );
     }
 }
