@@ -1,9 +1,9 @@
 [active]
 image_name=xx.itb
-image_version=xxx
+image_version=ver_658868
 
 [passive]
 ready_for_update_flag=true
 image_name=xx.itb
-image_version=xxx
+image_version=ver_658869
 update_status=updating

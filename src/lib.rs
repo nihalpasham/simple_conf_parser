@@ -1,9 +1,12 @@
+//! A simple nom-based config parser for `no_std` environments.
+
 #![no_std]
+#![deny(missing_docs)]
 
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{digit0, multispace0},
+    character::complete::{digit0, multispace0, multispace1},
     combinator::opt,
     error::ErrorKind,
     sequence::{preceded, separated_pair, tuple},
@@ -12,6 +15,8 @@ use nom::{
 
 use core::str::FromStr;
 
+/// A struct to hold the active-image configuration i.e. a fitimage 
+/// that's already been successfully booted in the past.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ActiveConf<'a> {
     active_config: ConfigKeys,
@@ -19,6 +24,8 @@ pub struct ActiveConf<'a> {
     image_version: u32,
 }
 
+/// A struct to hold the passive-image configuration i.e. a newly downloaded fitimage 
+/// that's been marked for `update` on the next reboot.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PassiveConf<'a> {
     passive_config: ConfigKeys,
@@ -29,13 +36,13 @@ pub struct PassiveConf<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ConfigKeys {
+enum ConfigKeys {
     Active,
     Passive,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum UpdateStatus {
+enum UpdateStatus {
     Updating,
     Testing,
     Success,
@@ -81,12 +88,12 @@ fn image_name(input: &str) -> IResult<&str, ImageLabel> {
 fn image_version(input: &str) -> IResult<&str, u32> {
     preceded(
         tag("image_version="),
-        separated_pair(tag("ver"), tag("_"), digit0),
+        separated_pair(tag("ver"), tag("_"), tuple((digit0, multispace1))),
     )(input)
     .map(|(next_input, res)| {
         (
             next_input,
-            res.1.parse::<u32>().expect("not a valid version number"),
+            res.1 .0.parse::<u32>().expect("not a valid version number"),
         )
     })
 }
@@ -156,13 +163,20 @@ fn passive_config(input: &str) -> IResult<&str, PassiveConf> {
             _crlf1,
             ready_for_update_flag,
             _crlf2,
-            image_name,
+            mut image_name,
             _crlf3,
-            image_version,
+            mut image_version,
             _crlf4,
-            update_status,
+            mut update_status,
             _crlf5,
         ) = res;
+
+        match (image_name, image_version, &update_status) {
+            (None, _, _) => (image_version, update_status) = (None, None),
+            (_, None, _) => (image_name, update_status) = (None, None),
+            (_, _, &None) => (image_name, image_version) = (None, None),
+            (_, _, _) => {}
+        }
         (
             next_input,
             PassiveConf {
@@ -176,6 +190,13 @@ fn passive_config(input: &str) -> IResult<&str, PassiveConf> {
     })
 }
 
+/// Parses the provided configuration file and returns the active and passive components
+/// as a tuple. A valid config file must contain an active and a passive component. 
+/// [`parse_config`] assumes the provided config (always) includes the active and 
+/// passive components. The passive componets may contain optional fields such `image_name`,
+/// `image_version` and `update_status`
+/// 
+/// **note:** for an example of what constitutes a `valid config file`, please see `update_conf.txt`
 pub fn parse_config(input: &str) -> IResult<&str, (ActiveConf, PassiveConf)> {
     tuple((active_config, passive_config))(input)
 }
@@ -197,7 +218,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use libc_print::libc_println;
+    use libc_print::libc_println;
     use nom::{error::Error, Err};
 
     #[test]
@@ -251,13 +272,20 @@ mod tests {
 
     #[test]
     fn test_image_version() {
+        libc_println!(
+            "image_version: {:?}",
+            image_version("image_version=ver_612634867 ")
+        );
         assert_eq!(
-            image_version("image_version=ver_612634867"),
+            image_version(
+                "image_version=ver_612634867
+            "
+            ),
             Ok(("", (612634867)))
         );
         assert_eq!(
             image_version("image_version=ver_111.222.345"),
-            Err(Err::Error(Error::new("111.222.345", ErrorKind::Tag)))
+            Err(Err::Error(Error::new(".222.345", ErrorKind::MultiSpace)))
         );
     }
 
@@ -349,6 +377,7 @@ mod tests {
 
     #[test]
     fn test_parse_config() {
+        // parse a valid config
         assert_eq!(
             parse_config(
                 "[active]
@@ -380,6 +409,7 @@ mod tests {
             ))
         );
         assert_eq!(
+            // parse a config with a missing `image_name` value
             parse_config(
                 "[active]
                 image_name=xx.itb
@@ -395,6 +425,36 @@ mod tests {
                 "image_name=
                 image_version=ver_34488735
                 update_status=updating",
+                (
+                    ActiveConf {
+                        active_config: ConfigKeys::Active,
+                        image_name: ("xx", ".itb"),
+                        image_version: 34488734
+                    },
+                    PassiveConf {
+                        passive_config: ConfigKeys::Passive,
+                        ready_for_update_flag: false,
+                        image_name: None,
+                        image_version: None,
+                        update_status: None
+                    }
+                )
+            ))
+        );
+        // parse a config that omits the `image_name` field entirely.
+        assert_eq!(
+            parse_config(
+                "[active]
+                image_name=xx.itb
+                image_version=ver_34488734
+                
+                [passive]
+                ready_for_update_flag=false
+                image_version=ver_34488735
+                update_status=updating"
+            ),
+            Ok((
+                "",
                 (
                     ActiveConf {
                         active_config: ConfigKeys::Active,
