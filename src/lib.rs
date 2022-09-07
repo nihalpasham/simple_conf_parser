@@ -15,7 +15,7 @@ use nom::{
 
 use core::str::FromStr;
 
-/// A struct to hold the active-image configuration i.e. a fitimage 
+/// A struct to hold the active-image configuration i.e. a fitimage
 /// that's already been successfully booted in the past.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ActiveConf<'a> {
@@ -24,7 +24,7 @@ pub struct ActiveConf<'a> {
     image_version: u32,
 }
 
-/// A struct to hold the passive-image configuration i.e. a newly downloaded fitimage 
+/// A struct to hold the passive-image configuration i.e. a newly downloaded fitimage
 /// that's been marked for `update` on the next reboot.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PassiveConf<'a> {
@@ -123,14 +123,14 @@ fn active_config(input: &str) -> IResult<&str, ActiveConf> {
     tuple((
         multispace0,
         config_keys,
-        multispace0,
+        multispace1,
         image_name,
-        multispace0,
+        multispace1,
         image_version,
-        multispace0,
+        // multispace1,
     ))(input)
     .map(|(next_input, res)| {
-        let (_crlf0, active_config, _crlf1, image_name, _crlf2, image_version, _crlf3) = res;
+        let (_crlf0, active_config, _crlf1, image_name, _crlf2, image_version) = res;
         (
             next_input,
             ActiveConf {
@@ -146,13 +146,13 @@ fn passive_config(input: &str) -> IResult<&str, PassiveConf> {
     tuple((
         multispace0,
         config_keys,
-        multispace0,
+        multispace1,
         ready_for_update,
-        multispace0,
+        multispace1,
         opt(image_name),
         multispace0,
         opt(image_version),
-        multispace0,
+        // multispace1,
         opt(update_status),
         multispace0,
     ))(input)
@@ -166,7 +166,6 @@ fn passive_config(input: &str) -> IResult<&str, PassiveConf> {
             mut image_name,
             _crlf3,
             mut image_version,
-            _crlf4,
             mut update_status,
             _crlf5,
         ) = res;
@@ -191,11 +190,11 @@ fn passive_config(input: &str) -> IResult<&str, PassiveConf> {
 }
 
 /// Parses the provided configuration file and returns the active and passive components
-/// as a tuple. A valid config file must contain an active and a passive component. 
-/// [`parse_config`] assumes the provided config (always) includes the active and 
+/// as a tuple. A valid config file must contain an active and a passive component.
+/// [`parse_config`] assumes the provided config (always) includes the active and
 /// passive components. The passive componets may contain optional fields such `image_name`,
 /// `image_version` and `update_status`
-/// 
+///
 /// **note:** for an example of what constitutes a `valid config file`, please see `update_conf.txt`
 pub fn parse_config(input: &str) -> IResult<&str, (ActiveConf, PassiveConf)> {
     tuple((active_config, passive_config))(input)
@@ -257,6 +256,10 @@ mod tests {
             Ok(("blah", ("signed-apertis-rpi4", ".itb")))
         );
         assert_eq!(
+            image_name("image_name="),
+            Err(Err::Error(Error::new("", ErrorKind::AlphaNumeric)))
+        );
+        assert_eq!(
             image_name("image_name=example.org:8080"),
             Err(Err::Error(Error::new(".org:8080", ErrorKind::Tag)))
         );
@@ -272,10 +275,10 @@ mod tests {
 
     #[test]
     fn test_image_version() {
-        libc_println!(
-            "image_version: {:?}",
-            image_version("image_version=ver_612634867 ")
-        );
+        // libc_println!(
+        //     "image_version: {:?}",
+        //     image_version("image_version=ver_612634867 ")
+        // );
         assert_eq!(
             image_version(
                 "image_version=ver_612634867
@@ -300,7 +303,7 @@ mod tests {
     #[test]
     fn test_update_status() {
         // libc_println!(
-        //     "active_config: {:?}",
+        //     "update_status: {:?}",
         //     update_status("update_status=updating")
         // );
         assert_eq!(
@@ -311,10 +314,17 @@ mod tests {
 
     #[test]
     fn test_active_conf() {
+        libc_println!(
+            "active_config: {:?}",
+            active_config(
+                "[active]
+            image_name=xx.itb
+            image_version=ver_123 "
+            )
+        );
         assert_eq!(
             active_config(
-                "
-                [active]
+                "[active]
             image_name=xx.itb
             image_version=ver_123 "
             ),
